@@ -1,37 +1,31 @@
-/******************************/
-/* os.c */
-/******************************/
 #include <cstdio>
 #include "sys.h"
 #include "rtos_api.h"
 
-int StartOS(TTaskCall entry, int priority, char *name) {
-    int i;
-    RunningTask = -1;
-    TaskCount = 0;
-    FreeTask = 0;
-    printf("Hello world! I'm RTOS\n");
-    for (i = 0; i < MAX_PRIORITY; i++) {
-        HeadTasks[i] = -1;
-    }
+void InitializeTask(TTask &task, size_t next, size_t prev) {
+    task.next = -1;
+    task.prev = -1;
+    task.task_state = TTaskState::TASK_SUSPENDED;
+    task.switch_count = 0;
+    task.waiting_events = 0;
+}
+
+void StartOS(TTaskCall &task, size_t priority, const std::string &name) {
+    size_t i;
+    TaskInProcess = TaskHead = -1;
+    TaskCount = EventsInProcess = 0;
+
+    std::cout << "OS initialized..." << std::endl;
     for (i = 0; i < MAX_TASK; i++) {
-        TaskQueue[i].next = i + 1;
-        TaskQueue[i].prev = i - 1;
-        TaskQueue[i].task_state = TASK_SUSPENDED;
-        TaskQueue[i].switch_count = 0;
-        TaskQueue[i].waited_resource = -1;
-        for (int j = 0; j < MAX_EVENT; j++) {
-            TaskQueue[i].waiting_events[j] = 0;
-            TaskQueue[i].working_events[j] = 0;
-        }
+        InitializeTask(TaskQueue[i], i + 1, i - 1);
     }
     TaskQueue[MAX_TASK - 1].next = 0;
     TaskQueue[0].prev = MAX_TASK - 1;
-    if (!setjmp(MainContext))
-        ActivateTask(entry, priority, name);
-    return 0;
+
+    ActivateTask(task, priority, name);
+    Dispatch();
 }
 
 void ShutdownOS() {
-    printf("Good bye!\n");
+    std::cout << "OS shutdown..." << std::endl;
 }

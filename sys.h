@@ -1,51 +1,47 @@
-/****************************************/
-/* sys.h /
-/****************************************/
 #pragma once
 
 #include "defs.h"
 #include <csetjmp>
+#include <iostream>
+#include <memory>
 #include <string>
+#include <cstdlib>
 
-enum TTaskState {
-    TASK_RUNNING,
+enum class TTaskState {
+    TASK_RUNNING, 
     TASK_READY,
     TASK_SUSPENDED,
     TASK_WAITING
 };
 
-typedef unsigned int TEventMask;
+typedef size_t TEventMask;
 
-typedef int TSemaphore;
+typedef struct {
+    size_t next, prev;
+    size_t priority;
+    size_t ceiling_priority;
 
-typedef struct Type_Task {
-    int next, prev;
-    int priority;
-    int ceiling_priority;
+    void (*entry)();
 
-    void (*entry)(void);
-
-    char *name;
+    std::string name;
     TTaskState task_state;
-    int switch_count;
+    size_t switch_count;
     jmp_buf context;
-    TSemaphore waited_resource;
-
-    TEventMask waiting_events[MAX_EVENT];
-    TEventMask working_events[MAX_EVENT];
+    TEventMask waiting_events;
 } TTask;
 
-typedef struct Type_resource {
-    volatile int block;
+typedef struct {
+    size_t task;
     std::string name;
 } TResource;
 
-extern TTask TaskQueue[MAX_TASK]; // queue with tasks to execute
+extern TTask TaskQueue[MAX_TASK];
 extern TResource ResourceQueue[MAX_RES];
-extern int RunningTask; // running task
-extern int HeadTasks[MAX_PRIORITY]; // first task in the queue
-extern int TaskCount; // number of tasks left to complete
-extern int FreeTask; // pointer to the first available task (the rest in the queue after it)
-extern jmp_buf MainContext; // main context
-void Schedule(int task);
+extern size_t TaskInProcess;
+extern size_t TaskHead;
+extern size_t TaskCount;
+extern TEventMask EventsInProcess;
+
+void Schedule(size_t task);
+
 void Dispatch();

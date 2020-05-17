@@ -1,106 +1,133 @@
-/*********************************/
-/* task.cpp */
-/*********************************/
-#include <stdio.h>
+#include <cstdio>
+#include <string>
 #include "sys.h"
 #include "rtos_api.h"
 
-// to add task before item, head indicates the head of the queue
-void InsertTaskBefore(int task, int item, int *head) {
-    if (TaskQueue[task].next != -1)
-        return;
-    if (item == *head)
-        *head = task;
-    TaskQueue[task].next = item;
-    TaskQueue[task].prev = TaskQueue[item].prev;
-    TaskQueue[TaskQueue[item].prev].next = task;
-    TaskQueue[item].prev = task;
+bool checkIfNextExists(size_t taskNum) {
+    return TaskQueue[taskNum].next != -1;
 }
 
-void InsertTaskAfter(int task, int item) {
-    if (TaskQueue[task].next != -1)
-        return;
-    TaskQueue[task].next = TaskQueue[item].next;
-    TaskQueue[task].prev = item;
-    TaskQueue[TaskQueue[item].next].prev = task;
-    TaskQueue[item].next = task;
-}
-
-void RemoveTask(int task, int *head) {
-    if (TaskQueue[task].next == -1)
-        return;
-    if (*head == task) {
-        if (TaskQueue[task].next == task)
-            *head = -1;
-        else
-            *head = TaskQueue[task].next;
+void InsertBefore(size_t existingTaskNum, size_t insertTaskNum, size_t *head) {
+    if (insertTaskNum == *head) {
+        *head = existingTaskNum;
     }
-    TaskQueue[TaskQueue[task].prev].next = TaskQueue[task].next;
-    TaskQueue[TaskQueue[task].next].prev = TaskQueue[task].prev;
-    TaskQueue[task].next = -1;
-    TaskQueue[task].prev = -1;
+    TaskQueue[existingTaskNum].next = insertTaskNum;
+    TaskQueue[existingTaskNum].prev = TaskQueue[insertTaskNum].prev;
+    TaskQueue[TaskQueue[insertTaskNum].prev].next = existingTaskNum;
+    TaskQueue[insertTaskNum].prev = existingTaskNum;
 }
 
-int ActivateTask(TTaskCall entry, int priority, char *name) {
-    int occupy;
-    printf("Start activating task %s\n", name);
-    occupy = FreeTask;
-    // change the queue of free tasks
-    RemoveTask(occupy, &FreeTask);
+int FindFreeTask() {
+    for (int i = 0; i < MAX_TASK; i++) {
+        if (TaskQueue[i].task_state == TTaskState::TASK_SUSPENDED) {
+            return i;
+        }
+    }
+
+    return -1;
+}
+
+void InsertAfter(size_t existingTaskNum, size_t insertTaskNum) {
+    TaskQueue[existingTaskNum].next = TaskQueue[insertTaskNum].next;
+    TaskQueue[existingTaskNum].prev = insertTaskNum;
+    if (TaskQueue[insertTaskNum].next != -1) {
+        TaskQueue[TaskQueue[insertTaskNum].next].prev = existingTaskNum;
+    }
+    TaskQueue[insertTaskNum].next = existingTaskNum;
+}
+
+void RemoveTask(size_t existingTaskNum, size_t *head) {
+    if (*head == existingTaskNum) {
+        *head = TaskQueue[existingTaskNum].next;
+    }
+
+    if (TaskQueue[existingTaskNum].prev != -1) {
+        TaskQueue[TaskQueue[existingTaskNum].prev].next = TaskQueue[existingTaskNum].next;
+    } 
+    if (TaskQueue[existingTaskNum].next != -1) {
+        TaskQueue[TaskQueue[existingTaskNum].next].prev = TaskQueue[existingTaskNum].prev;
+    }
+}
+
+void ActivateTask(TTaskCall entry, size_t priority, const std::string &name) {
+    size_t occupy;
+    std::cout << "Task [" << name << "] activation" << std::endl;
+    occupy = FindFreeTask();
+
     TaskQueue[occupy].priority = priority;
     TaskQueue[occupy].ceiling_priority = priority;
     TaskQueue[occupy].name = name;
     TaskQueue[occupy].entry = entry;
     TaskQueue[occupy].switch_count = 0;
-    TaskQueue[occupy].task_state = TASK_READY;
+    TaskQueue[occupy].task_state = TTaskState::TASK_READY;
     TaskCount++;
+
     Schedule(occupy);
-    if (TaskCount == 1) {
-        Dispatch();
-    }
-    return occupy;
 }
 
-void TerminateTask(void) {
-    int task;
+void TerminateTask() {
+    size_t task;
     TaskCount--;
-    task = RunningTask;
-    printf("TerminateTask %s\n", TaskQueue[task].name);
-    TaskQueue[task].task_state = TASK_SUSPENDED;
-    RemoveTask(task, &(HeadTasks[TaskQueue[task].ceiling_priority]));
-    // add task to the queue of free tasks
-    InsertTaskBefore(task, FreeTask, &FreeTask);
-    // if no task left -> return
-    if (TaskCount == 0)
-        longjmp(MainContext, 1);
+    task = TaskInProcess;
+
+    std::cout << "Task [" << TaskQueue[task].name << "] termination started" << std::endl;
+    TaskQueue[task].task_state = TTaskState::TASK_SUSPENDED;
+    RemoveTask(task, &TaskHead);
+
+    // if (TaskCount == 0) {
+    //     longjmp(MainContext, 1);
+    // }
     Dispatch();
 }
 
-void Schedule(int task) {
-    int priority;
-    if (TaskQueue[task].task_state == TASK_SUSPENDED)
+void Schedule(size_t task) {
+    size_t cur, priority;
+    if (task <= sizeof(TaskQueue) / sizeof(TaskQueue[0])
+        && TaskQueue[task].task_state == TTaskState::TASK_SUSPENDED) {
         return;
-    printf("Start scheduling %s\n", TaskQueue[task].name);
-    priority = TaskQueue[task].ceiling_priority;
-    RemoveTask(task, &(HeadTasks[priority]));
-    if (HeadTasks[priority] == -1) {
-        HeadTasks[priority] = task;
-        TaskQueue[task].next = task;
-        TaskQueue[task].prev = task;
-    } else
-        InsertTaskAfter(task, TaskQueue[HeadTasks[priority]].prev);
+    }
+
+    std::cout << "Started scheduling of the [" << TaskQueue[task].name << "] task" << std::endl;
+    if (TaskHead == -1) {
+        TaskHead = task;
+    } else if (TaskCount > 1) {
+        cur = TaskHead;
+        if (cur == task) {
+            cur = TaskQueue[cur].next;
+        }
+        priority = TaskQueue[task].ceiling_priority;
+        RemoveTask(task, &TaskHead);
+
+
+        while (TaskQueue[cur].ceiling_priority >= priority) {
+            if (TaskQueue[cur].next == -1) {
+                break;
+            }
+            cur = TaskQueue[cur].next;
+        }
+
+        if (TaskQueue[cur].ceiling_priority >= priority || cur == TaskHead) {
+            InsertAfter(task, cur);
+        } else {
+            InsertBefore(task, cur, &TaskHead);
+        }
+    }
 }
 
-void TaskSwitch(int nextTask) {
-    if (nextTask == -1)
+void TaskSwitch(size_t nextTask) {
+    if (nextTask == -1) {
         return;
-    TaskQueue[nextTask].task_state = TASK_RUNNING;
-    RunningTask = nextTask;
+    }
+
+    TaskQueue[nextTask].task_state = TTaskState::TASK_RUNNING;
+    TaskInProcess = nextTask;
     TaskQueue[nextTask].switch_count++;
-    if (TaskQueue[nextTask].switch_count == 1)
-        TaskQueue[nextTask].entry(); // if for the first time
-    else
+
+    if (TaskQueue[nextTask].switch_count == 1) {
+        TaskQueue[nextTask].entry();
+    } else {
         longjmp(TaskQueue[nextTask].context, 1); // the task context already exists
+    }
 }
 
 // reserving the stack area for the task
@@ -111,39 +138,84 @@ void TaskSwitchWithCushion(int nextTask) {
 }
 
 void Dispatch() {
-    if (RunningTask != -1)
-        printf("Dispatch - %s\n", TaskQueue[RunningTask].name);
-    else
-        printf("Dispatch\n");
-    int nextTask = HeadTasks[0];
-    int priority = 0;
-    while (TaskCount) {
-        if (nextTask != -1) {
-            if (TaskCount == 1 && TaskQueue[nextTask].task_state != TASK_READY)
-                break;
-            if (TaskQueue[nextTask].task_state == TASK_READY || TaskQueue[nextTask].task_state == TASK_RUNNING) {
-                // switch to the next task
-                if (RunningTask == -1 || TaskQueue[RunningTask].task_state == TASK_SUSPENDED)
-                    TaskSwitch(nextTask);
-                else if (RunningTask != nextTask)
-                    if (!setjmp(TaskQueue[RunningTask].context)) {
-                        if (TaskQueue[RunningTask].switch_count == 1)
-                            TaskSwitchWithCushion(nextTask);
-                        else
-                            TaskSwitch(nextTask);
-                    }
-                break;
-            }
-            nextTask = TaskQueue[nextTask].next;
+    if (TaskInProcess == -1) {
+        // Должны попытаться переключиться на TaskHead
+        if (TaskHead == -1) {
+            return;
         }
-        if (nextTask == -1 || nextTask == HeadTasks[priority]) { // switch to the next priority
-            priority++;
-            if (priority < MAX_PRIORITY)
-                nextTask = HeadTasks[priority];
-            else {
-                longjmp(MainContext, 1);
+
+        if (TaskQueue[TaskHead].task_state == TTaskState::TASK_READY) {
+            TaskSwitch(TaskHead);
+        }
+        return;
+    }
+    if (TaskInProcess != -1 && TaskQueue[TaskInProcess].task_state == TTaskState::TASK_RUNNING) {
+        TaskQueue[TaskInProcess].task_state = TTaskState::TASK_READY;
+    }
+    size_t nextTask = TaskQueue[TaskInProcess].next;
+    while (TaskCount) {
+        if (TaskQueue[nextTask].task_state == TTaskState::TASK_READY) {
+            // std::cout << "Ended the dispatch of the task [" << TaskQueue[TaskInProcess].name << "]" << std::endl;
+            // if (TaskQueue[TaskInProcess].task_state == TTaskState::TASK_SUSPENDED) {
+            if (TaskQueue[TaskInProcess].task_state != TTaskState::TASK_SUSPENDED) {
+                Schedule(TaskInProcess);
             }
+
+            if (TaskInProcess == -1 || TaskQueue[TaskInProcess].task_state == TTaskState::TASK_SUSPENDED)
+                TaskSwitch(nextTask);
+            else {
+                if (!setjmp(TaskQueue[TaskInProcess].context)) {
+                    if (TaskQueue[TaskInProcess].switch_count == 1)
+                        TaskSwitchWithCushion(nextTask);
+                    else
+                        TaskSwitch(nextTask);
+                }
+            }
+            // }
+            break;
+        }
+        nextTask = TaskQueue[nextTask].next;
+        if (nextTask == -1) {
+            std::cout << "No ready tasks at the moment" << std::endl;
+            break;
         }
     }
-    printf("End of Dispatch - %s\n", TaskQueue[RunningTask].name);
 }
+
+// void Dispatch() {
+//     if (TaskInProcess != -1)
+//         printf("Dispatch - %s\n", TaskQueue[TaskInProcess].name);
+//     else
+//         printf("Dispatch\n");
+//     int nextTask = TaskQueue[TaskInProcess].next;
+//     int priority = 0;
+//     while (TaskCount) {
+//         if (nextTask != -1) {
+//             if (TaskCount == 1 && TaskQueue[nextTask].task_state != TASK_READY)
+//                 break;
+//             if (TaskQueue[nextTask].task_state == TASK_READY || TaskQueue[nextTask].task_state == TASK_RUNNING) {
+//                 // switch to the next task
+//                 if (RunningTask == -1 || TaskQueue[RunningTask].task_state == TASK_SUSPENDED)
+//                     TaskSwitch(nextTask);
+//                 else if (RunningTask != nextTask)
+//                     if (!setjmp(TaskQueue[RunningTask].context)) {
+//                         if (TaskQueue[RunningTask].switch_count == 1)
+//                             TaskSwitchWithCushion(nextTask);
+//                         else
+//                             TaskSwitch(nextTask);
+//                     }
+//                 break;
+//             }
+//             nextTask = TaskQueue[nextTask].next;
+//         }
+//         if (nextTask == -1 || nextTask == HeadTasks[priority]) { // switch to the next priority
+//             priority++;
+//             if (priority < MAX_PRIORITY)
+//                 nextTask = HeadTasks[priority];
+//             else {
+//                 longjmp(MainContext, 1);
+//             }
+//         }
+//     }
+//     printf("End of Dispatch - %s\n", TaskQueue[RunningTask].name);
+// }

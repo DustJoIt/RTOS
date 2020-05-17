@@ -1,41 +1,32 @@
-/****************************************/
-/* rtos_api.h */
-/****************************************/
 #pragma once
 
 #include "sys.h"
-#include <string>
 
 #define DeclareTask(TaskID, priority)\
 TASK(TaskID); \
-enum {TaskID##prior=(priority)}
+enum {TaskID##prior=priority}
 #define TASK(TaskID) void TaskID(void)
+#define DeclareSysEvent(ID) \
+const size_t Event_##ID = (ID)*(ID);
 
-typedef void TTaskCall(void);
+typedef void TTaskCall();
 
-int ActivateTask(TTaskCall entry, int priority, char *name);
+void ActivateTask(TTaskCall entry, size_t priority, const std::string &name);
 
-void TerminateTask(void);
+void TerminateTask();
 
-int StartOS(TTaskCall entry, int priority, char *name);
+void StartOS(TTaskCall &task, size_t priority, const std::string &name);
 
 void ShutdownOS();
 
-void InitPVS(TSemaphore S, std::string name);
+void InitRes(size_t resNum, const std::string &name);
 
-void P(TSemaphore S);
+void GetRes(size_t resNum);
 
-void V(TSemaphore S);
+void ReleaseRes(size_t resNum);
 
-#define DeclareSysEvent(ID) \
-const int Event_##ID = (ID);
+void SetSysEvent(const TEventMask &eventMask);
 
-void SetEvent(TTask task, TEventMask mask);
+void GetSysEvent(TEventMask *eventMask);
 
-void GetEvent(TTask task, TEventMask *mask);
-
-void WaitEvent(TEventMask mask);
-
-void ClearEvent(TEventMask mask);
-
-void ArrayOffset(int index, TEventMask* events);
+void WaitSysEvent(const TEventMask &eventMask);

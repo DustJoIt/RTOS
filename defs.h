@@ -1,9 +1,7 @@
-/****************************************/
-/* defs.h */
-/****************************************/
 #pragma once
 
-#define MAX_TASK 32
-#define MAX_RES 16
-#define MAX_EVENT 16
-#define MAX_PRIORITY 16
+#include <cstdlib>
+
+const size_t MAX_TASK = 32;
+const size_t MAX_RES = 16;
+const size_t MAX_EVENT = 16;
